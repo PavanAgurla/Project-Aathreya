@@ -1,0 +1,97 @@
+pipeline {
+agent any
+environment {
+IMAGE_NAME = "myapp-demo"
+DOCKERHUB_REPO = "your-dockerhub-username/${IMAGE_NAME}"
+AWS_REGION = "us-east-1"
+ECR_ACCOUNT = "123456789012"
+// change as needed
+// change
+ECR_REPO = "${ECR_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/$
+{IMAGE_NAME}"
+}
+options {
+buildDiscarder(logRotator(numToKeepStr: '20'))
+timestamps()
+}
+stages {
+stage('Checkout') {
+steps { checkout scm }
+}
+stage('Build & Unit Tests') {
+steps {
+sh 'mvn -B -f app/pom.xml clean test package'
+junit 'app/target/surefire-reports/*.xml'
+}
+}
+stage('Static Code Analysis - SonarQube') {
+steps {
+withCredentials([string(credentialsId:'sonar.token',
+variable:'SONAR_TOKEN')]) {
+sh "mvn -f app/pom.xml sonar:sonar -Dsonar.host.url=${SONAR_HOST} 
+Dsonar.login=${SONAR_TOKEN}"
+}
+}
+}
+stage('SAST / DAST') {
+parallel {
+4
+stage('SAST (semgrep placeholder)') {
+steps {
+sh 'chmod +x security/sast-scan.sh'
+sh './security/sast-scan.sh || true'
+}
+}
+stage('DAST - OWASP ZAP (baseline)') {
+steps {
+sh 'chmod +x security/run-zap.sh'
+sh './security/run-zap.sh || true'
+archiveArtifacts artifacts: 'zap-report/*', allowEmptyArchive: true
+}
+}
+}
+}
+stage('Build Docker Image') {
+steps {
+script {
+def tag = "${env.BRANCH_NAME ?: 'branch'}-${env.BUILD_NUMBER}"
+env.IMAGE_TAG = tag
+sh "docker build -t ${DOCKERHUB_REPO}:${tag} -f Dockerfile ."
+sh "docker tag ${DOCKERHUB_REPO}:${tag} ${ECR_REPO}:${tag}"
+}
+}
+}
+stage('Push to Registries') {
+steps {
+script {
+withCredentials([usernamePassword(credentialsId: 'dockerhub-creds',
+usernameVariable: 'DH_USER', passwordVariable: 'DH_PASS')]) {
+sh 'echo $DH_PASS | docker login -u $DH_USER --password-stdin'
+sh "docker push ${DOCKERHUB_REPO}:${IMAGE_TAG}"
+}
+// Push to ECR
+sh '''
+            aws ecr get-login-password --region ${AWS_REGION} |   
+              docker login --username AWS --password-stdin $
+{ECR_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com
+            docker push ${ECR_REPO}:${IMAGE_TAG}
+          '''
+}
+}
+}
+}
+5
+post {
+success {
+emailext subject: "Build Successful: ${env.JOB_NAME} #$
+{env.BUILD_NUMBER}",
+body: "Build succeeded. Image: ${ECR_REPO}:${IMAGE_TAG}",
+to: 'dev-team@example.com'
+}
+failure {
+emailext subject: "Build FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+body: "Check Jenkins console: ${env.BUILD_URL}",
+to: 'dev-team@example.com'
+}
+}
+}
