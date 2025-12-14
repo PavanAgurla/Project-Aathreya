@@ -1,16 +1,15 @@
 #!/bin/bash
-set-e
-# This is an example using OWASP ZAP's docker image to run a baseline scan.
-# It assumes the application is reachable at http://host.docker.internal:8080
-# when running from a Linux host, you may need to adapt the target.
-mkdir-p zap-report
-echo "Running OWASP ZAP baseline scan against http://host.docker.internal:8080"
-docker run--rm-v $(pwd)/zap-report:/zap/wrk/:Z owasp/zap2docker-stable zap
-baseline.py-t http://host.docker.internal:8080-r zap-report/report.html ||
-true
-if [-f zap-report/report.html ]; then
-echo "ZAP report generated: zap-report/report.html"
+set -e
+
+mkdir -p zap-report
+
+# Run OWASP ZAP baseline scan
+docker run --rm -v $(pwd)/zap-report:/zap/wrk owasp/zap2docker-stable \
+    zap-baseline.py -t http://host.docker.internal:8080 -r /zap/wrk/report.html
+
+if [ -f zap-report/report.html ]; then
+    echo "ZAP report generated successfully"
 else
-echo "ZAP did not produce a report — check connectivity or adapt the target 
-URL."
+    echo "ZAP report not found"
+    exit 1
 fi
