@@ -1,9 +1,6 @@
 #!/bin/bash
-set-e
-# Placeholder SAST script — replace with semgrep / dependency-check / checkmarx 
-as required.
+set -e
+
 echo "Running placeholder SAST scan..."
-# Example: if you installed semgrep on the agent you could run:
-# semgrep --config auto app/ || exit 1
-# For demo purposes the script exits 0.
-exit 0
+# semgrep example
+# semgrep --config=p/ci security/src/
